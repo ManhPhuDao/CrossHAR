@@ -23,276 +23,276 @@ class Trainer(object):
         self.lambda2 = 1
         self.beizhu = ''
 
-def pretrain(self, data_loader_train, data_loader_test, model_file=None):
-    print('mlm loss: ct loss=' + str(self.lambda1) + ':' + str(self.lambda2))
+    def pretrain(self, data_loader_train, data_loader_test, model_file=None):
+        print('mlm loss: ct loss=' + str(self.lambda1) + ':' + str(self.lambda2))
 
-    n_epoch_now = 0  # define epoch that model begin to train
+        n_epoch_now = 0  # define epoch that model begin to train
 
-    self.load(model_file)
-    self.masked_model = self.masked_model.to(self.device)
-    self.Contrastive_model = self.Contrastive_model.to(self.device)
+        self.load(model_file)
+        self.masked_model = self.masked_model.to(self.device)
+        self.Contrastive_model = self.Contrastive_model.to(self.device)
 
-    self.masked_model.train()
-    self.Contrastive_model.train()
+        self.masked_model.train()
+        self.Contrastive_model.train()
 
-    global_step = 0
-    best_loss = 1e6
+        global_step = 0
+        best_loss = 1e6
 
-    # ============================================================
-    # TIMER
-    # ============================================================
-    total_start_time = time.perf_counter()
+        # ============================================================
+        # TIMER
+        # ============================================================
+        total_start_time = time.perf_counter()
 
-    total_epochs = self.cfg.n_epochs - n_epoch_now
-    total_batches = len(data_loader_train)
+        total_epochs = self.cfg.n_epochs - n_epoch_now
+        total_batches = len(data_loader_train)
 
-    print("\n" + "=" * 70)
-    print("START PRETRAINING")
-    print(f"Total epochs : {total_epochs}")
-    print(f"Batches/epoch: {total_batches}")
-    print(f"Total batches: {total_epochs * total_batches}")
-    print("=" * 70)
+        print("\n" + "=" * 70)
+        print("START PRETRAINING")
+        print(f"Total epochs : {total_epochs}")
+        print(f"Batches/epoch: {total_batches}")
+        print(f"Total batches: {total_epochs * total_batches}")
+        print("=" * 70)
 
-    for e in range(n_epoch_now, self.cfg.n_epochs):
+        for e in range(n_epoch_now, self.cfg.n_epochs):
 
-        epoch_start_time = time.perf_counter()
+            epoch_start_time = time.perf_counter()
 
-        loss_sum, loss_lm_sum, loss_nt_sum = 0.0, 0.0, 0.0
-        time_sum = 0.0
+            loss_sum, loss_lm_sum, loss_nt_sum = 0.0, 0.0, 0.0
+            time_sum = 0.0
 
-        # ========================================================
-        # TRAIN
-        # ========================================================
-        for i, (
-            mask_seqs_1,
-            masked_pos_1,
-            seqs_1,
-            mask_seqs_2,
-            masked_pos_2,
-            seqs_2
-        ) in enumerate(data_loader_train):
-
-            start_time = time.time()
-
-            mask_seqs_1 = mask_seqs_1.to(self.device)
-            masked_pos_1 = masked_pos_1.to(self.device)
-            seqs_1 = seqs_1.to(self.device)
-
-            mask_seqs_2 = mask_seqs_2.to(self.device)
-            masked_pos_2 = masked_pos_2.to(self.device)
-            seqs_2 = seqs_2.to(self.device)
-
-            self.masked_optimizer.zero_grad()
-            self.Contrastive_optimizer.zero_grad()
-
-            representation_1, seq_recon_1 = self.masked_model(
+            # ========================================================
+            # TRAIN
+            # ========================================================
+            for i, (
                 mask_seqs_1,
-                masked_pos_1
-            )
-
-            loss_lm_1 = self.criterion(seq_recon_1, seqs_1)
-            loss_lm_1 = loss_lm_1.mean()
-
-            representation_2, seq_recon_2 = self.masked_model(
+                masked_pos_1,
+                seqs_1,
                 mask_seqs_2,
-                masked_pos_2
-            )
+                masked_pos_2,
+                seqs_2
+            ) in enumerate(data_loader_train):
 
-            loss_lm_2 = self.criterion(seq_recon_2, seqs_2)
-            loss_lm_2 = loss_lm_2.mean()
+                start_time = time.time()
 
-            zis = self.Contrastive_model(representation_1)
-            zjs = self.Contrastive_model(representation_2)
+                mask_seqs_1 = mask_seqs_1.to(self.device)
+                masked_pos_1 = masked_pos_1.to(self.device)
+                seqs_1 = seqs_1.to(self.device)
 
-            nt_xent_criterion = NTXentLoss(
-                device=self.device,
-                batch_size=self.batch_size
-            )
+                mask_seqs_2 = mask_seqs_2.to(self.device)
+                masked_pos_2 = masked_pos_2.to(self.device)
+                seqs_2 = seqs_2.to(self.device)
 
-            loss_nt = nt_xent_criterion(zis, zjs)
+                self.masked_optimizer.zero_grad()
+                self.Contrastive_optimizer.zero_grad()
 
-            # reset best_loss
-            if e == (self.cfg.n_epochs - self.cfg.n_epochs_cl):
-                best_loss = 10e6
-
-            if e < (self.cfg.n_epochs - self.cfg.n_epochs_cl):
-
-                # only use mlm loss
-                loss = (loss_lm_1 + loss_lm_2) / 2
-
-            else:
-
-                loss = (
-                    self.lambda1 *
-                    (loss_lm_1 + loss_lm_2) / 2
-                    + self.lambda2 * loss_nt
+                representation_1, seq_recon_1 = self.masked_model(
+                    mask_seqs_1,
+                    masked_pos_1
                 )
 
-            loss.backward()
+                loss_lm_1 = self.criterion(seq_recon_1, seqs_1)
+                loss_lm_1 = loss_lm_1.mean()
 
-            self.masked_optimizer.step()
-            self.Contrastive_optimizer.step()
+                representation_2, seq_recon_2 = self.masked_model(
+                    mask_seqs_2,
+                    masked_pos_2
+                )
 
-            time_sum += time.time() - start_time
+                loss_lm_2 = self.criterion(seq_recon_2, seqs_2)
+                loss_lm_2 = loss_lm_2.mean()
 
-            global_step += 1
+                zis = self.Contrastive_model(representation_1)
+                zjs = self.Contrastive_model(representation_2)
 
-            loss_sum += loss.item()
+                nt_xent_criterion = NTXentLoss(
+                    device=self.device,
+                    batch_size=self.batch_size
+                )
 
-            loss_lm_sum += (
-                (loss_lm_1 + loss_lm_2) / 2
-            ).item()
+                loss_nt = nt_xent_criterion(zis, zjs)
 
-            loss_nt_sum += loss_nt.item()
+                # reset best_loss
+                if e == (self.cfg.n_epochs - self.cfg.n_epochs_cl):
+                    best_loss = 10e6
 
-            # ====================================================
-            # CHECK TOTAL STEPS
-            # ====================================================
-            if self.cfg.total_steps and self.cfg.total_steps < global_step:
-                print('The Total Steps have been reached.')
-                return
+                if e < (self.cfg.n_epochs - self.cfg.n_epochs_cl):
 
-        # ========================================================
-        # VALIDATION
-        # ========================================================
-        loss_eva, loss_eva_mlm, loss_eva_nt = self.run(
-            data_loader_test,
-            e
-        )
+                    # only use mlm loss
+                    loss = (loss_lm_1 + loss_lm_2) / 2
 
-        # ========================================================
-        # TIME CALCULATION
-        # ========================================================
-        epoch_elapsed = time.perf_counter() - epoch_start_time
-        total_elapsed = time.perf_counter() - total_start_time
+                else:
 
-        completed_epochs = e - n_epoch_now + 1
+                    loss = (
+                        self.lambda1 *
+                        (loss_lm_1 + loss_lm_2) / 2
+                        + self.lambda2 * loss_nt
+                    )
 
-        avg_epoch_time = total_elapsed / completed_epochs
+                loss.backward()
 
-        remaining_epochs = self.cfg.n_epochs - (e + 1)
+                self.masked_optimizer.step()
+                self.Contrastive_optimizer.step()
 
-        eta_seconds = avg_epoch_time * remaining_epochs
+                time_sum += time.time() - start_time
 
-        # ========================================================
-        # FORMAT TIME
-        # ========================================================
-        def format_time(seconds):
+                global_step += 1
 
-            seconds = int(max(0, seconds))
+                loss_sum += loss.item()
 
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            seconds = seconds % 60
+                loss_lm_sum += (
+                    (loss_lm_1 + loss_lm_2) / 2
+                ).item()
 
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                loss_nt_sum += loss_nt.item()
 
-        # Estimated finish time
-        import datetime
+                # ====================================================
+                # CHECK TOTAL STEPS
+                # ====================================================
+                if self.cfg.total_steps and self.cfg.total_steps < global_step:
+                    print('The Total Steps have been reached.')
+                    return
 
-        finish_time = datetime.datetime.now() + datetime.timedelta(
-            seconds=eta_seconds
-        )
-
-        # ========================================================
-        # PRINT TRAINING RESULT
-        # ========================================================
-        dlt_len = len(data_loader_train)
-
-        train_loss = loss_sum / dlt_len
-        train_lm_loss = loss_lm_sum / dlt_len
-        train_nt_loss = loss_nt_sum / dlt_len
-
-        print(
-            '\n' +
-            '=' * 70
-        )
-
-        print(
-            'Epoch %d/%d : '
-            'Train Loss %5.4f. '
-            'lm loss %5.4f '
-            'nt loss %5.4f | '
-            'Val Loss %5.4f '
-            'lm loss %5.4f '
-            'nt loss %5.4f'
-            %
-            (
-                e + 1,
-                self.cfg.n_epochs,
-                train_loss,
-                train_lm_loss,
-                train_nt_loss,
-                loss_eva,
-                loss_eva_mlm,
-                loss_eva_nt
+            # ========================================================
+            # VALIDATION
+            # ========================================================
+            loss_eva, loss_eva_mlm, loss_eva_nt = self.run(
+                data_loader_test,
+                e
             )
-        )
 
-        print('-' * 70)
+            # ========================================================
+            # TIME CALCULATION
+            # ========================================================
+            epoch_elapsed = time.perf_counter() - epoch_start_time
+            total_elapsed = time.perf_counter() - total_start_time
 
-        print(
-            f"Epoch time       : {format_time(epoch_elapsed)}"
-        )
+            completed_epochs = e - n_epoch_now + 1
 
-        print(
-            f"Total elapsed    : {format_time(total_elapsed)}"
-        )
+            avg_epoch_time = total_elapsed / completed_epochs
 
-        print(
-            f"Average/epoch    : {format_time(avg_epoch_time)}"
-        )
+            remaining_epochs = self.cfg.n_epochs - (e + 1)
 
-        print(
-            f"Remaining epochs : {remaining_epochs}"
-        )
+            eta_seconds = avg_epoch_time * remaining_epochs
 
-        print(
-            f"Estimated ETA    : {format_time(eta_seconds)}"
-        )
+            # ========================================================
+            # FORMAT TIME
+            # ========================================================
+            def format_time(seconds):
 
-        print(
-            f"Estimated finish : {finish_time.strftime('%H:%M:%S')}"
-        )
+                seconds = int(max(0, seconds))
 
-        # Progress percentage
-        progress = (
-            completed_epochs /
-            self.cfg.n_epochs
-        ) * 100
+                hours = seconds // 3600
+                minutes = (seconds % 3600) // 60
+                seconds = seconds % 60
 
-        print(
-            f"Progress         : {progress:.2f}%"
-        )
+                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-        print('=' * 70)
+            # Estimated finish time
+            import datetime
 
-        # ========================================================
-        # SAVE BEST MODEL
-        # ========================================================
-        if loss_eva < best_loss:
+            finish_time = datetime.datetime.now() + datetime.timedelta(
+                seconds=eta_seconds
+            )
 
-            best_loss = loss_eva
+            # ========================================================
+            # PRINT TRAINING RESULT
+            # ========================================================
+            dlt_len = len(data_loader_train)
 
-            self.save()
+            train_loss = loss_sum / dlt_len
+            train_lm_loss = loss_lm_sum / dlt_len
+            train_nt_loss = loss_nt_sum / dlt_len
 
             print(
-                f"--> Best model saved! "
-                f"Val Loss = {best_loss:.6f}"
+                '\n' +
+                '=' * 70
             )
 
-    # ============================================================
-    # FINISHED
-    # ============================================================
-    total_training_time = time.perf_counter() - total_start_time
+            print(
+                'Epoch %d/%d : '
+                'Train Loss %5.4f. '
+                'lm loss %5.4f '
+                'nt loss %5.4f | '
+                'Val Loss %5.4f '
+                'lm loss %5.4f '
+                'nt loss %5.4f'
+                %
+                (
+                    e + 1,
+                    self.cfg.n_epochs,
+                    train_loss,
+                    train_lm_loss,
+                    train_nt_loss,
+                    loss_eva,
+                    loss_eva_mlm,
+                    loss_eva_nt
+                )
+            )
 
-    print("\n" + "=" * 70)
-    print("THE TOTAL EPOCH HAVE BEEN REACHED.")
-    print(
-        f"Total training time: "
-        f"{format_time(total_training_time)}"
-    )
-    print("=" * 70)
+            print('-' * 70)
+
+            print(
+                f"Epoch time       : {format_time(epoch_elapsed)}"
+            )
+
+            print(
+                f"Total elapsed    : {format_time(total_elapsed)}"
+            )
+
+            print(
+                f"Average/epoch    : {format_time(avg_epoch_time)}"
+            )
+
+            print(
+                f"Remaining epochs : {remaining_epochs}"
+            )
+
+            print(
+                f"Estimated ETA    : {format_time(eta_seconds)}"
+            )
+
+            print(
+                f"Estimated finish : {finish_time.strftime('%H:%M:%S')}"
+            )
+
+            # Progress percentage
+            progress = (
+                completed_epochs /
+                self.cfg.n_epochs
+            ) * 100
+
+            print(
+                f"Progress         : {progress:.2f}%"
+            )
+
+            print('=' * 70)
+
+            # ========================================================
+            # SAVE BEST MODEL
+            # ========================================================
+            if loss_eva < best_loss:
+
+                best_loss = loss_eva
+
+                self.save()
+
+                print(
+                    f"--> Best model saved! "
+                    f"Val Loss = {best_loss:.6f}"
+                )
+
+        # ============================================================
+        # FINISHED
+        # ============================================================
+        total_training_time = time.perf_counter() - total_start_time
+
+        print("\n" + "=" * 70)
+        print("THE TOTAL EPOCH HAVE BEEN REACHED.")
+        print(
+            f"Total training time: "
+            f"{format_time(total_training_time)}"
+        )
+        print("=" * 70)
     def run(self, data_loader, e):
         """ Evaluation Loop """
         self.masked_model.eval() # evaluation mode
